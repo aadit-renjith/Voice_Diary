@@ -1,0 +1,115 @@
+.recorder {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1rem;
+}
+
+/* Wave + Button Row */
+.wave-container {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+/* Sound Wave Bars */
+.wave-bars {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    height: 40px;
+}
+
+.bar {
+    width: 3px;
+    height: 8px;
+    border-radius: 2px;
+    transition: height 0.3s;
+}
+
+.bar.green {
+    background: #34d399;
+}
+
+.bar.pink {
+    background: #f472b6;
+}
+
+/* Animate when recording */
+.wave-bars.active .bar {
+    animation: waveAnim 0.6s ease-in-out infinite alternate;
+}
+
+@keyframes waveAnim {
+    0% {
+        height: 6px;
+    }
+
+    100% {
+        height: 32px;
+    }
+}
+
+/* Mic Button */
+.mic-btn {
+    width: 64px;
+    height: 64px;
+    border-radius: 50%;
+    border: 3px solid #6366f1;
+    background: white;
+    color: #6366f1;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.3s;
+    box-shadow: 0 0 0 6px rgba(99, 102, 241, 0.12);
+}
+
+.mic-btn:hover {
+    background: #eef2ff;
+}
+
+.mic-btn.recording {
+    border-color: #ef4444;
+    color: #ef4444;
+    box-shadow: 0 0 0 6px rgba(239, 68, 68, 0.15);
+    animation: pulse 1.5s infinite;
+}
+
+.mic-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+@keyframes pulse {
+
+    0%,
+    100% {
+        box-shadow: 0 0 0 6px rgba(239, 68, 68, 0.15);
+    }
+
+    50% {
+        box-shadow: 0 0 0 12px rgba(239, 68, 68, 0.05);
+    }
+}
+
+.spin {
+    animation: spinAnim 1s linear infinite;
+}
+
+@keyframes spinAnim {
+    from {
+        transform: rotate(0deg);
+    }
+
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.rec-status {
+    font-size: 0.9rem;
+    color: #6b7280;
+    font-weight: 500;
+}
