@@ -9,6 +9,8 @@ build/
 venv/
 env/
 .env
+*.env
+apikey.env
 
 # Node
 node_modules/

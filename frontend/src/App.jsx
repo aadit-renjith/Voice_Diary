@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import AudioRecorder from './components/AudioRecorder';
 import EmotionChart from './components/EmotionChart';
+import ChatWidget from './components/ChatWidget';
 import './App.css';
 import { Mic, Activity } from 'lucide-react';
 
@@ -110,6 +111,9 @@ function App() {
           </div>
         </div>
       </div>
+
+      {/* Chat Widget (fixed position overlay) */}
+      <ChatWidget currentEmotion={currentEmotion} />
     </div>
   );
 }
