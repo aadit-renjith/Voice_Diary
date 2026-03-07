@@ -9,11 +9,13 @@ import speech_recognition as sr
 import numpy as np
 import pickle
 import librosa
-from data_processor import extract_features
+from data_processor import extract_mel_spectrogram
 from chat_engine import ChatEngine
 
 # Configuration
-MODEL_PATH = "../models/pro_ser_model.pkl"
+MODEL_PATH = "../models/ser_cnn_lstm.keras"
+LABEL_ENCODER_PATH = "../models/label_encoder.pkl"
+SCALER_PATH = "../models/scaler.pkl"
 TEMP_DIR = "temp_uploads"
 
 # Initialize App
@@ -28,8 +30,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Load Model
+# Load Model, Scaler & Label Encoder
 model = None
+scaler = None
+label_encoder = None
 chat_engine = ChatEngine()
 
 
@@ -45,16 +49,67 @@ class StartChatRequest(BaseModel):
 
 @app.on_event("startup")
 def load_model():
-    global model
+    global model, scaler, label_encoder
+
+    # Load Keras model
     if os.path.exists(MODEL_PATH):
         try:
-            with open(MODEL_PATH, 'rb') as f:
-                model = pickle.load(f)
-            print("Model loaded successfully.")
+            import tensorflow as tf
+            model = tf.keras.models.load_model(MODEL_PATH)
+            print("CNN-LSTM model loaded successfully.")
         except Exception as e:
             print(f"Error loading model: {e}")
     else:
         print("Model file not found. Ensure training is complete.")
+
+    # Load scaler
+    if os.path.exists(SCALER_PATH):
+        try:
+            with open(SCALER_PATH, 'rb') as f:
+                scaler = pickle.load(f)
+            print("Scaler loaded successfully.")
+        except Exception as e:
+            print(f"Error loading scaler: {e}")
+    else:
+        print("Scaler file not found. Features won't be scaled.")
+
+    # Load label encoder
+    if os.path.exists(LABEL_ENCODER_PATH):
+        try:
+            with open(LABEL_ENCODER_PATH, 'rb') as f:
+                label_encoder = pickle.load(f)
+            print(f"Label encoder loaded. Classes: {list(label_encoder.classes_)}")
+        except Exception as e:
+            print(f"Error loading label encoder: {e}")
+    else:
+        print("Label encoder not found.")
+
+
+def predict_from_file(file_path):
+    """Extract features from audio file and predict emotion using CNN-LSTM."""
+    features = extract_mel_spectrogram(file_path)
+
+    if features is None:
+        return None, None
+
+    # Scale features (reshape → scale → reshape back)
+    n_time, n_freq = features.shape
+    if scaler is not None:
+        features = scaler.transform(features.reshape(-1, n_freq)).reshape(n_time, n_freq)
+
+    # Add batch dimension: (1, time, freq)
+    features = np.expand_dims(features, axis=0)
+
+    # Predict
+    probs = model.predict(features, verbose=0)
+    pred_idx = np.argmax(probs, axis=1)[0]
+
+    if label_encoder is not None:
+        emotion = label_encoder.inverse_transform([pred_idx])[0]
+    else:
+        emotion = str(pred_idx)
+
+    return emotion, probs[0]
 
 
 @app.get("/")
@@ -79,25 +134,15 @@ async def predict_emotion(file: UploadFile = File(...)):
 
     try:
         print(f"Processing file at: {temp_path}")
-        # Extract features
-        features = extract_features(temp_path)
 
-        if features is None:
+        emotion, probs = predict_from_file(temp_path)
+
+        if emotion is None:
             print("Feature extraction failed (returned None)")
             raise HTTPException(status_code=400, detail="Could not process audio file")
 
-        print(f"Features extracted. Shape: {features.shape}")
-
-        # Reshape for prediction (1, n_features)
-        features = features.reshape(1, -1)
-
-        # Predict
-        prediction = model.predict(features)
-        probabilities = model.predict_proba(features)
-
-        emotion = prediction[0]
         print(f"Predicted emotion: {emotion}")
-        print(f"Probabilities: {probabilities}")
+        print(f"Probabilities: {probs}")
 
         # Cleanup
         os.remove(temp_path)
@@ -135,11 +180,9 @@ async def transcribe_audio(file: UploadFile = File(...)):
         # 2) Emotion prediction (if model is loaded)
         if model:
             try:
-                features = extract_features(temp_path)
-                if features is not None:
-                    features = features.reshape(1, -1)
-                    prediction = model.predict(features)
-                    emotion = prediction[0]
+                pred_emotion, _ = predict_from_file(temp_path)
+                if pred_emotion is not None:
+                    emotion = pred_emotion
                     print(f"Chat emotion: {emotion}")
             except Exception as e:
                 print(f"Emotion prediction in chat failed (non-critical): {e}")
