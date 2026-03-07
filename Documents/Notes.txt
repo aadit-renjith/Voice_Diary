@@ -1,0 +1,10 @@
+16-02-26
+
+Algorithm: Random Forest Classifier (sklearn.ensemble.RandomForestClassifier)
+Parameters:
+n_estimators: 100 (Number of trees in the forest)
+random_state: 42 (Ensures reproducibility)
+Input Features: A combined vector of MFCC (Mel-frequency cepstral coefficients), Chroma, and Mel Spectrogram features extracted from the audio.
+
+cd backend && uvicorn app:app --reload
+cd frontend && npm run dev

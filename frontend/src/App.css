@@ -1,0 +1,225 @@
+/* ===== Global ===== */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Outfit', sans-serif;
+  min-height: 100vh;
+  background: linear-gradient(135deg, #c9a7eb 0%, #a0d2db 30%, #f3c6d0 60%, #d4b8e0 100%);
+  color: #1f2937;
+}
+
+.app {
+  width: 100%;
+  padding: 1.5rem 3rem;
+}
+
+/* ===== Nav ===== */
+.nav {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.5rem;
+}
+
+.nav-left {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.nav-icon {
+  color: #6366f1;
+}
+
+.nav-title {
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: #4f46e5;
+}
+
+.nav-btn {
+  background: white;
+  border: 1px solid #d1d5db;
+  padding: 0.4rem 1rem;
+  border-radius: 2rem;
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  color: #374151;
+  transition: background 0.2s;
+}
+
+.nav-btn:hover {
+  background: #f3f4f6;
+}
+
+/* ===== Body Grid — fills full width ===== */
+.body {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1.5rem;
+  width: 100%;
+}
+
+@media (min-width: 900px) {
+  .body {
+    grid-template-columns: 1fr 1.5fr;
+    gap: 2rem;
+  }
+}
+
+/* ===== Left Column ===== */
+.col-left {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.hero-title {
+  font-size: 2.25rem;
+  font-weight: 800;
+  color: #111827;
+  line-height: 1.15;
+}
+
+.hero-sub {
+  font-size: 1.05rem;
+  color: #4b5563;
+  margin-top: -0.5rem;
+}
+
+/* ===== Right Column ===== */
+.col-right {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.right-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.right-header-icon {
+  color: #6366f1;
+}
+
+.right-header-text {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #111827;
+}
+
+/* ===== Card Base ===== */
+.card {
+  background: white;
+  border-radius: 1.25rem;
+  padding: 1.75rem;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.06);
+  width: 100%;
+}
+
+/* ===== Recorder Card ===== */
+.recorder-card {
+  text-align: center;
+}
+
+.card-title {
+  font-size: 1.5rem;
+  font-weight: 800;
+  color: #111827;
+  margin-bottom: 1.5rem;
+}
+
+/* ===== Emotion Cards ===== */
+.emotion-card,
+.emotion-card-sm {
+  text-align: center;
+}
+
+.emotion-label {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #111827;
+  margin-bottom: 0.75rem;
+}
+
+.emotion-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.6rem 2rem;
+  border-radius: 0.75rem;
+  background: linear-gradient(135deg, #99f6e4, #5eead4);
+  margin-bottom: 0.5rem;
+  animation: popIn 0.4s ease-out;
+}
+
+.emotion-pill.placeholder {
+  background: #f3f4f6;
+}
+
+.emotion-text {
+  font-size: 2rem;
+  font-weight: 800;
+  color: #134e4a;
+}
+
+.emotion-pill.placeholder .emotion-text {
+  color: #9ca3af;
+  font-size: 1.5rem;
+}
+
+.emotion-emoji {
+  font-size: 1.75rem;
+}
+
+.emotion-msg {
+  font-size: 0.95rem;
+  color: #6b7280;
+  margin-top: 0.25rem;
+  font-style: italic;
+}
+
+/* ===== Chart Card (Dark) ===== */
+.chart-card {
+  background: #0f172a;
+  color: white;
+  border: 1px solid #22d3ee;
+  box-shadow: 0 0 20px rgba(34, 211, 238, 0.15);
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 320px;
+}
+
+.chart-title {
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: white;
+  margin-bottom: 0.5rem;
+}
+
+.chart-empty {
+  color: #6b7280;
+  text-align: center;
+  padding: 3rem 0;
+}
+
+/* ===== Animations ===== */
+@keyframes popIn {
+  from {
+    opacity: 0;
+    transform: scale(0.85);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}

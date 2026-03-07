@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+dist/
+build/
+*.egg
+venv/
+env/
+.env
+*.env
+apikey.env
+
+# Node
+node_modules/
+npm-debug.log*
+
+# Dataset (too large for GitHub)
+dataset/
+
+
+# Temp files
+backend/temp_uploads/
+*.tmp
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
