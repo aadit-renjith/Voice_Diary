@@ -2,7 +2,8 @@
 import numpy as np
 import pickle
 from sklearn.metrics import classification_report, confusion_matrix, accuracy_score
-from data_processor import load_data_dl_speaker_split
+from data_processor import load_data_multi_speaker_split
+from train_model import AttentionLayer
 import tensorflow as tf
 
 # Config (same as train_model.py)
@@ -13,15 +14,19 @@ DATA_PATH = "../dataset"
 TEST_ACTORS = [21, 22, 23, 24]
 
 print("Loading saved model, scaler, and label encoder...")
-model = tf.keras.models.load_model(MODEL_PATH)
+model = tf.keras.models.load_model(
+    MODEL_PATH,
+    custom_objects={'AttentionLayer': AttentionLayer}
+)
 with open(SCALER_PATH, 'rb') as f:
     scaler = pickle.load(f)
 with open(LABEL_ENCODER_PATH, 'rb') as f:
     le = pickle.load(f)
 
 print(f"Loading test data (actors {TEST_ACTORS}, no augmentation)...")
-_, _, X_test, y_test_raw = load_data_dl_speaker_split(
-    DATA_PATH, n_augments=0, test_actors=TEST_ACTORS
+_, _, X_test, y_test_raw = load_data_multi_speaker_split(
+    DATA_PATH, n_augments=0, test_actors=TEST_ACTORS,
+    apply_spec_augment=False
 )
 print(f"Test samples: {len(X_test)}")
 
