@@ -17,15 +17,22 @@ def init_db():
         transcription TEXT,
         emotion TEXT,
         summary TEXT,
-        topics TEXT
+        topics TEXT,
+        full_chat TEXT
     )
     """)
+
+    # Check if full_chat column exists (for migrations)
+    c.execute("PRAGMA table_info(diary_entries)")
+    columns = [info[1] for info in c.fetchall()]
+    if "full_chat" not in columns:
+        c.execute("ALTER TABLE diary_entries ADD COLUMN full_chat TEXT")
 
     conn.commit()
     conn.close()
 
 
-def save_entry(session_id, transcription, emotion, summary, topics):
+def save_entry(session_id, transcription, emotion, summary, topics, full_chat=None):
 
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
@@ -34,15 +41,16 @@ def save_entry(session_id, transcription, emotion, summary, topics):
 
     c.execute("""
     INSERT INTO diary_entries
-    (session_id, date, transcription, emotion, summary, topics)
-    VALUES (?, ?, ?, ?, ?, ?)
+    (session_id, date, transcription, emotion, summary, topics, full_chat)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
     """, (
         session_id,
         datetime.now().isoformat(),
         transcription,
         emotion,
         summary,
-        topics_str
+        topics_str,
+        full_chat
     ))
 
     conn.commit()
@@ -54,10 +62,40 @@ def get_entries():
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
 
-    c.execute("SELECT date, emotion FROM diary_entries")
+    c.execute("SELECT date, emotion FROM diary_entries ORDER BY date DESC")
 
     rows = c.fetchall()
 
     conn.close()
 
     return rows
+
+
+def get_history():
+    """Fetch all history entries for the history panel."""
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+
+    c.execute("""
+    SELECT id, session_id, date, transcription, emotion, summary, topics, full_chat 
+    FROM diary_entries 
+    ORDER BY date DESC
+    """)
+
+    rows = c.fetchall()
+    conn.close()
+
+    history = []
+    for row in rows:
+        history.append({
+            "id": row[0],
+            "session_id": row[1],
+            "date": row[2],
+            "transcription": row[3],
+            "emotion": row[4],
+            "summary": row[5],
+            "topics": row[6].split(",") if row[6] else [],
+            "full_chat": row[7]
+        })
+
+    return history

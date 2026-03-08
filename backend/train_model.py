@@ -76,6 +76,41 @@ class AttentionLayer(Layer):
         return config
 
 
+@tf.keras.utils.register_keras_serializable()
+class WarmupSchedule(tf.keras.optimizers.schedules.LearningRateSchedule):
+    def __init__(self, warmup_steps=1650, warmup_lr=0.001, base_schedule=None, **kwargs):
+        super().__init__(**kwargs)
+        self.warmup_steps = warmup_steps
+        self.warmup_lr = warmup_lr
+        self.base_schedule = base_schedule
+
+    def __call__(self, step):
+        step = tf.cast(step, tf.float32)
+        warmup_steps = tf.cast(self.warmup_steps, tf.float32)
+        warmup_factor = tf.minimum(step / warmup_steps, 1.0)
+        warmup_lr = self.warmup_lr * warmup_factor
+        
+        if self.base_schedule is not None:
+            base_lr = self.base_schedule(tf.maximum(step - warmup_steps, 0))
+            return tf.where(step < warmup_steps, warmup_lr, base_lr)
+        return warmup_lr
+
+    def get_config(self):
+        config = {
+            "warmup_steps": self.warmup_steps,
+            "warmup_lr": self.warmup_lr,
+        }
+        if self.base_schedule is not None:
+            config["base_schedule"] = tf.keras.optimizers.schedules.serialize(self.base_schedule)
+        return config
+
+    @classmethod
+    def from_config(cls, config):
+        if "base_schedule" in config and config["base_schedule"] is not None:
+            config["base_schedule"] = tf.keras.optimizers.schedules.deserialize(config["base_schedule"])
+        return cls(**config)
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # Residual CNN Block
 # ═══════════════════════════════════════════════════════════════════════════
@@ -230,29 +265,6 @@ def train():
         decay_steps=total_steps - warmup_steps,
         alpha=1e-6  # minimum LR
     )
-
-    # Wrap with warmup
-    class WarmupSchedule(tf.keras.optimizers.schedules.LearningRateSchedule):
-        def __init__(self, base_schedule, warmup_steps, warmup_lr):
-            super().__init__()
-            self.base_schedule = base_schedule
-            self.warmup_steps = warmup_steps
-            self.warmup_lr = warmup_lr
-
-        def __call__(self, step):
-            warmup_factor = tf.minimum(
-                tf.cast(step, tf.float32) / tf.cast(self.warmup_steps, tf.float32),
-                1.0
-            )
-            warmup_lr = self.warmup_lr * warmup_factor
-            base_lr = self.base_schedule(tf.maximum(step - self.warmup_steps, 0))
-            return tf.where(step < self.warmup_steps, warmup_lr, base_lr)
-
-        def get_config(self):
-            return {
-                "warmup_steps": self.warmup_steps,
-                "warmup_lr": self.warmup_lr,
-            }
 
     schedule = WarmupSchedule(lr_schedule, warmup_steps, INITIAL_LR)
 

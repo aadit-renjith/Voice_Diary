@@ -4,7 +4,7 @@ import axios from 'axios';
 import RecordRTC from 'recordrtc';
 import './ChatWidget.css';
 
-const ChatWidget = ({ currentEmotion }) => {
+const ChatWidget = ({ currentEmotion, onChatComplete }) => {
     const [isOpen, setIsOpen] = useState(false);
     const [hasStarted, setHasStarted] = useState(false);
     const [messages, setMessages] = useState([]);
@@ -102,6 +102,7 @@ const ChatWidget = ({ currentEmotion }) => {
             if (chatRes.data.is_complete) {
                 setIsComplete(true);
                 setSummary(chatRes.data.summary);
+                if (onChatComplete) onChatComplete();
             }
         } catch (err) {
             console.error('Voice processing error:', err);
@@ -162,6 +163,7 @@ const ChatWidget = ({ currentEmotion }) => {
             if (res.data.is_complete) {
                 setIsComplete(true);
                 setSummary(res.data.summary);
+                if (onChatComplete) onChatComplete();
             }
         } catch (err) {
             console.error('Chat error:', err);

@@ -41,6 +41,56 @@ body {
   color: #4f46e5;
 }
 
+.nav-center {
+  display: flex;
+  gap: 1rem;
+  background: rgba(255, 255, 255, 0.5);
+  padding: 0.3rem;
+  border-radius: 2rem;
+  border: 1px solid rgba(255, 255, 255, 0.8);
+}
+
+.nav-link {
+  background: transparent;
+  border: none;
+  padding: 0.5rem 1.2rem;
+  border-radius: 1.5rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #64748b;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.nav-link.active {
+  background: white;
+  color: #4f46e5;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+.nav-right-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  background: rgba(255, 255, 255, 0.8);
+  padding: 0.4rem 1rem;
+  border-radius: 2rem;
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  background: #10b981;
+  border-radius: 50%;
+  box-shadow: 0 0 8px rgba(16, 185, 129, 0.5);
+}
+
+.status-text {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #059669;
+}
+
 .nav-btn {
   background: white;
   border: 1px solid #d1d5db;
@@ -70,6 +120,11 @@ body {
     grid-template-columns: 1fr 1.5fr;
     gap: 2rem;
   }
+}
+
+.history-view {
+  width: 100%;
+  margin: 0 auto;
 }
 
 /* ===== Left Column ===== */

@@ -25,6 +25,11 @@ backend/temp_uploads/
 *.tmp
 *.log
 
+# Databases
+*.db
+*.sqlite
+*.sqlite3
+
 # OS files
 .DS_Store
 Thumbs.db

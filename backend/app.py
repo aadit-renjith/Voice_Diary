@@ -10,13 +10,14 @@ import numpy as np
 import pickle
 import sqlite3
 import librosa
+import json
 from collections import Counter
 from datetime import datetime, timedelta
 
 from data_processor import extract_multi_features
-from train_model import AttentionLayer
+from train_model import AttentionLayer, WarmupSchedule
 from chat_engine import ChatEngine
-from database import init_db, save_entry, get_entries
+from database import init_db, save_entry, get_entries, get_history
 
 # Configuration
 MODEL_PATH = "../models/ser_cnn_lstm.keras"
@@ -65,7 +66,7 @@ def load_model():
             import tensorflow as tf
             model = tf.keras.models.load_model(
                 MODEL_PATH,
-                custom_objects={'AttentionLayer': AttentionLayer}
+                custom_objects={'AttentionLayer': AttentionLayer, 'WarmupSchedule': WarmupSchedule}
             )
             print("CNN-LSTM model loaded successfully.")
         except Exception as e:
@@ -255,15 +256,48 @@ async def chat(req: ChatRequest):
     result = chat_engine.chat(req.session_id, req.message, req.emotion)
 
     if result["is_complete"]:
+        # Get the full history for this session to save
+        history = chat_engine.sessions.get(req.session_id, [])
+        full_chat_json = json.dumps(history) if history else None
+        
         save_entry(
             session_id=req.session_id,
             transcription=req.message,
             emotion=req.emotion,
             summary=result["summary"],
-            topics=result["detected_topics"]
+            topics=result["detected_topics"],
+            full_chat=full_chat_json
         )
 
     return result
+
+
+# ---------------------------------------------------------
+# HISTORY: GET ALL ENTRIES
+# ---------------------------------------------------------
+
+@app.get("/history")
+def fetch_history():
+    """Retrieve all diary entries with full details."""
+    try:
+        data = get_history()
+        return data
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.delete("/history")
+def clear_all_history():
+    """Clear all history from the database."""
+    try:
+        conn = sqlite3.connect("voice_diary.db")
+        c = conn.cursor()
+        c.execute("DELETE FROM diary_entries")
+        conn.commit()
+        conn.close()
+        return {"message": "All history cleared"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # ---------------------------------------------------------
