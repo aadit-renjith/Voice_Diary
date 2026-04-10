@@ -12,6 +12,7 @@ const AudioRecorder = ({ onPrediction }) => {
     const startRecording = async () => {
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+
             recorderRef.current = new RecordRTC(stream, {
                 type: 'audio',
                 mimeType: 'audio/wav',
@@ -19,9 +20,10 @@ const AudioRecorder = ({ onPrediction }) => {
                 numberOfAudioChannels: 1,
                 desiredSampRate: 16000,
             });
+
             recorderRef.current.startRecording();
             setIsRecording(true);
-        } catch (err) {
+        } catch {
             alert("Microphone access denied.");
         }
     };
@@ -42,38 +44,31 @@ const AudioRecorder = ({ onPrediction }) => {
         try {
             const fd = new FormData();
             fd.append('file', blob, 'recording.wav');
-            const res = await axios.post('http://localhost:8000/predict', fd);
-            if (onPrediction) onPrediction(res.data.emotion);
-        } catch { alert("Analysis failed."); }
-        finally { setIsLoading(false); }
+
+            const res = await axios.post('http://localhost:8001/transcribe', fd);
+
+            const { transcription, final_emotion, audio_emotion, text_emotion } = res.data;
+
+            if (onPrediction) {
+                onPrediction({
+                    transcription,
+                    finalEmotion: final_emotion,
+                    audioEmotion: audio_emotion,
+                    textEmotion: text_emotion
+                });
+            }
+        } catch {
+            alert("Analysis failed.");
+        } finally {
+            setIsLoading(false);
+        }
     };
 
     return (
         <div className="recorder">
-            {/* Sound wave bars */}
-            <div className="wave-container">
-                <div className={`wave-bars left ${isRecording ? 'active' : ''}`}>
-                    {[...Array(6)].map((_, i) => <span key={i} className="bar green" style={{ animationDelay: `${i * 0.1}s` }}></span>)}
-                </div>
-
-                <button
-                    onClick={isRecording ? stopRecording : startRecording}
-                    disabled={isLoading}
-                    className={`mic-btn ${isRecording ? 'recording' : ''}`}
-                >
-                    {isLoading ? <Loader2 size={28} className="spin" /> :
-                        isRecording ? <Square size={24} /> :
-                            <Mic size={28} />}
-                </button>
-
-                <div className={`wave-bars right ${isRecording ? 'active' : ''}`}>
-                    {[...Array(6)].map((_, i) => <span key={i} className="bar pink" style={{ animationDelay: `${i * 0.1}s` }}></span>)}
-                </div>
-            </div>
-
-            <p className="rec-status">
-                {isLoading ? "Analyzing..." : isRecording ? "Listening... tap to stop" : "Tap microphone to start"}
-            </p>
+            <button onClick={isRecording ? stopRecording : startRecording} disabled={isLoading}>
+                {isLoading ? <Loader2 className="spin" /> : isRecording ? <Square /> : <Mic />}
+            </button>
         </div>
     );
 };

@@ -1,23 +1,27 @@
-from fastapi import FastAPI, File, UploadFile, HTTPException, Form
+from fastapi import FastAPI, File, UploadFile, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional
 import uvicorn
 import shutil
 import os
-import speech_recognition as sr
 import numpy as np
 import pickle
 import sqlite3
-import librosa
 import json
 from collections import Counter
 from datetime import datetime, timedelta
 
+# ML / Audio
+import whisper
+
+# Local modules
 from data_processor import extract_multi_features
 from train_model import AttentionLayer, WarmupSchedule
 from chat_engine import ChatEngine
 from database import init_db, save_entry, get_entries, get_history
+from text_emotion import get_text_emotion
+from fusion import fuse
 
 # Configuration
 MODEL_PATH = "../models/ser_cnn_lstm.keras"
@@ -26,21 +30,22 @@ SCALER_PATH = "../models/scaler.pkl"
 TEMP_DIR = "temp_uploads"
 
 # Initialize App
-app = FastAPI(title="SER Voice Diary API", version="1.0")
+app = FastAPI(title="SER Voice Diary API", version="2.0")
 
 # CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allow all for development
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Load Model, Scaler & Label Encoder
+# Globals
 model = None
 scaler = None
 label_encoder = None
+whisper_model = None
 chat_engine = ChatEngine()
 
 
@@ -54,25 +59,30 @@ class StartChatRequest(BaseModel):
     session_id: str
 
 
+# ---------------------------------------------------------
+# LOAD MODELS
+# ---------------------------------------------------------
+
 @app.on_event("startup")
 def load_model():
-    global model, scaler, label_encoder
+    global model, scaler, label_encoder, whisper_model
 
     init_db()
 
-    # Load Keras model
+    # Load SER model
     if os.path.exists(MODEL_PATH):
         try:
             import tensorflow as tf
             model = tf.keras.models.load_model(
                 MODEL_PATH,
-                custom_objects={'AttentionLayer': AttentionLayer, 'WarmupSchedule': WarmupSchedule}
+                custom_objects={
+                    'AttentionLayer': AttentionLayer,
+                    'WarmupSchedule': WarmupSchedule
+                }
             )
             print("CNN-LSTM model loaded successfully.")
         except Exception as e:
             print(f"Error loading model: {e}")
-    else:
-        print("Model file not found. Ensure training is complete.")
 
     # Load scaler
     if os.path.exists(SCALER_PATH):
@@ -82,37 +92,43 @@ def load_model():
             print("Scaler loaded successfully.")
         except Exception as e:
             print(f"Error loading scaler: {e}")
-    else:
-        print("Scaler file not found. Features won't be scaled.")
 
     # Load label encoder
     if os.path.exists(LABEL_ENCODER_PATH):
         try:
             with open(LABEL_ENCODER_PATH, 'rb') as f:
                 label_encoder = pickle.load(f)
-            print(f"Label encoder loaded. Classes: {list(label_encoder.classes_)}")
+            print(f"Label encoder loaded.")
         except Exception as e:
             print(f"Error loading label encoder: {e}")
-    else:
-        print("Label encoder not found.")
 
+    # Load Whisper
+    try:
+        whisper_model = whisper.load_model("base")
+        print("Whisper model loaded successfully.")
+    except Exception as e:
+        print(f"Error loading Whisper: {e}")
+
+
+# ---------------------------------------------------------
+# AUDIO EMOTION PREDICTION
+# ---------------------------------------------------------
 
 def predict_from_file(file_path):
-    """Extract multi-features from audio file and predict emotion using CNN-LSTM."""
     features = extract_multi_features(file_path)
 
     if features is None:
         return None, None
 
-    # Scale features (reshape → scale → reshape back)
     n_time, n_freq = features.shape
-    if scaler is not None:
-        features = scaler.transform(features.reshape(-1, n_freq)).reshape(n_time, n_freq)
 
-    # Add batch dimension: (1, time, freq)
+    if scaler is not None:
+        features = scaler.transform(
+            features.reshape(-1, n_freq)
+        ).reshape(n_time, n_freq)
+
     features = np.expand_dims(features, axis=0)
 
-    # Predict
     probs = model.predict(features, verbose=0)
     pred_idx = np.argmax(probs, axis=1)[0]
 
@@ -130,108 +146,65 @@ def read_root():
 
 
 # ---------------------------------------------------------
-# EMOTION PREDICTION (VOICE RECORDER)
-# ---------------------------------------------------------
-
-@app.post("/predict")
-async def predict_emotion(file: UploadFile = File(...)):
-    if not model:
-        raise HTTPException(status_code=503, detail="Model not loaded")
-
-    print(f"Received file: {file.filename}")
-
-    # Save uploaded file temporarily
-    if not os.path.exists(TEMP_DIR):
-        os.makedirs(TEMP_DIR)
-
-    temp_path = os.path.join(TEMP_DIR, file.filename)
-    with open(temp_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
-
-    try:
-        print(f"Processing file at: {temp_path}")
-
-        emotion, probs = predict_from_file(temp_path)
-
-        if emotion is None:
-            print("Feature extraction failed (returned None)")
-            raise HTTPException(status_code=400, detail="Could not process audio file")
-
-        print(f"Predicted emotion: {emotion}")
-        print(f"Probabilities: {probs}")
-
-        # Save entry for reports
-        save_entry(
-            session_id="voice_recording",
-            transcription="voice emotion capture",
-            emotion=emotion,
-            summary=None,
-            topics=[]
-        )
-
-        print("Entry saved to database")
-
-        # Cleanup
-        os.remove(temp_path)
-
-        return {"emotion": emotion}
-
-    except Exception as e:
-        print(f"Error during prediction: {e}")
-        if os.path.exists(temp_path):
-            os.remove(temp_path)
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-# ---------------------------------------------------------
-# TRANSCRIBE AUDIO
+# VOICE → TEXT + MULTIMODAL EMOTION
 # ---------------------------------------------------------
 
 @app.post("/transcribe")
 async def transcribe_audio(file: UploadFile = File(...)):
-    """Transcribe audio to text and also predict emotion."""
+
     if not os.path.exists(TEMP_DIR):
         os.makedirs(TEMP_DIR)
 
     temp_path = os.path.join(TEMP_DIR, f"chat_{file.filename}")
+
     with open(temp_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
 
     transcription = ""
-    emotion = None
+    audio_emotion = None
+    text_emotion = None
+    final_emotion = None
 
     try:
-        # 1) Speech-to-text using Google Speech Recognition
-        recognizer = sr.Recognizer()
-        with sr.AudioFile(temp_path) as source:
-            audio_data = recognizer.record(source)
-            transcription = recognizer.recognize_google(audio_data)
+        # 1) Whisper STT
+        if whisper_model:
+            result = whisper_model.transcribe(temp_path)
+            transcription = result.get("text", "").strip()
+
         print(f"Transcription: {transcription}")
 
-        # 2) Emotion prediction (if model is loaded)
+        # 2) Audio Emotion
         if model:
-            try:
-                pred_emotion, _ = predict_from_file(temp_path)
-                if pred_emotion is not None:
-                    emotion = pred_emotion
-                    print(f"Chat emotion: {emotion}")
-            except Exception as e:
-                print(f"Emotion prediction in chat failed (non-critical): {e}")
+            pred_emotion, probs = predict_from_file(temp_path)
+            if pred_emotion:
+                audio_emotion = (pred_emotion, float(np.max(probs)))
 
-    except sr.UnknownValueError:
-        print("Speech recognition could not understand audio")
-        transcription = ""
-    except sr.RequestError as e:
-        print(f"Speech recognition service error: {e}")
-        transcription = ""
+        print(f"Audio Emotion: {audio_emotion}")
+
+        # 3) Text Emotion
+        if transcription:
+            text_emotion = get_text_emotion(transcription)
+
+        print(f"Text Emotion: {text_emotion}")
+
+        # 4) Fusion
+        final_emotion = fuse(audio_emotion, text_emotion)
+
+        print(f"Final Emotion: {final_emotion}")
+
     except Exception as e:
-        print(f"Transcription error: {e}")
-        transcription = ""
+        print(f"Error: {e}")
+
     finally:
         if os.path.exists(temp_path):
             os.remove(temp_path)
 
-    return {"transcription": transcription, "emotion": emotion}
+    return {
+        "transcription": transcription,
+        "audio_emotion": audio_emotion,
+        "text_emotion": text_emotion,
+        "final_emotion": final_emotion
+    }
 
 
 # ---------------------------------------------------------
@@ -240,10 +213,8 @@ async def transcribe_audio(file: UploadFile = File(...)):
 
 @app.post("/chat/start")
 async def start_chat(req: StartChatRequest):
-    """Start a new chat session and get the AI's opening message."""
     chat_engine.reset_session(req.session_id)
-    result = chat_engine.get_opening_message(req.session_id)
-    return result
+    return chat_engine.get_opening_message(req.session_id)
 
 
 # ---------------------------------------------------------
@@ -252,14 +223,17 @@ async def start_chat(req: StartChatRequest):
 
 @app.post("/chat")
 async def chat(req: ChatRequest):
-    """Send a message in an ongoing chat session."""
-    result = chat_engine.chat(req.session_id, req.message, req.emotion)
+
+    result = chat_engine.chat(
+        req.session_id,
+        req.message,
+        req.emotion  # send final_emotion from frontend ideally
+    )
 
     if result["is_complete"]:
-        # Get the full history for this session to save
         history = chat_engine.sessions.get(req.session_id, [])
         full_chat_json = json.dumps(history) if history else None
-        
+
         save_entry(
             session_id=req.session_id,
             transcription=req.message,
@@ -273,48 +247,34 @@ async def chat(req: ChatRequest):
 
 
 # ---------------------------------------------------------
-# HISTORY: GET ALL ENTRIES
+# HISTORY
 # ---------------------------------------------------------
 
 @app.get("/history")
 def fetch_history():
-    """Retrieve all diary entries with full details."""
-    try:
-        data = get_history()
-        return data
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    return get_history()
 
 
 @app.delete("/history")
 def clear_all_history():
-    """Clear all history from the database."""
-    try:
-        conn = sqlite3.connect("voice_diary.db")
-        c = conn.cursor()
-        c.execute("DELETE FROM diary_entries")
-        conn.commit()
-        conn.close()
-        return {"message": "All history cleared"}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    conn = sqlite3.connect("voice_diary.db")
+    c = conn.cursor()
+    c.execute("DELETE FROM diary_entries")
+    conn.commit()
+    conn.close()
+    return {"message": "All history cleared"}
 
 
 # ---------------------------------------------------------
-# ANALYTICS: EMOTION DISTRIBUTION
+# ANALYTICS
 # ---------------------------------------------------------
 
 @app.get("/analytics/emotions")
 def emotion_distribution():
     entries = get_entries()
     emotions = [e[1] for e in entries]
-    counts = dict(Counter(emotions))
-    return counts
+    return dict(Counter(emotions))
 
-
-# ---------------------------------------------------------
-# WEEKLY REPORT
-# ---------------------------------------------------------
 
 @app.get("/analytics/weekly")
 def weekly_report():
@@ -334,9 +294,7 @@ def weekly_report():
     emotions = [r[0] for r in rows]
     counts = dict(Counter(emotions))
 
-    dominant = None
-    if counts:
-        dominant = max(counts, key=counts.get)
+    dominant = max(counts, key=counts.get) if counts else None
 
     return {
         "total_entries": len(rows),
@@ -344,10 +302,6 @@ def weekly_report():
         "dominant_emotion": dominant
     }
 
-
-# ---------------------------------------------------------
-# MONTHLY REPORT
-# ---------------------------------------------------------
 
 @app.get("/analytics/monthly")
 def monthly_report():
@@ -373,5 +327,9 @@ def monthly_report():
     }
 
 
+# ---------------------------------------------------------
+# RUN SERVER
+# ---------------------------------------------------------
+
 if __name__ == "__main__":
-    uvicorn.run("app:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run(app, host="0.0.0.0", port=8001, reload=True)

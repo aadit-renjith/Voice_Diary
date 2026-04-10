@@ -3,7 +3,7 @@ import axios from 'axios';
 import './HistoryPanel.css';
 import { Calendar, MessageSquare, ChevronDown, ChevronUp, Trash2, Clock } from 'lucide-react';
 
-const API = "http://127.0.0.1:8000";
+const API = "http://localhost:8001";
 
 const emojiMap = {
     happy: '🤩',
