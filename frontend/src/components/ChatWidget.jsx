@@ -4,7 +4,7 @@ import axios from 'axios';
 import RecordRTC from 'recordrtc';
 import './ChatWidget.css';
 
-const API = 'http://localhost:8001';
+const API = 'http://localhost:8000';
 
 // Generate a random short session ID
 const newSessionId = () => `chat-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;

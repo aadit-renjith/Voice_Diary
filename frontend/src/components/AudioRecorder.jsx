@@ -45,7 +45,7 @@ const AudioRecorder = ({ onPrediction }) => {
             const fd = new FormData();
             fd.append('file', blob, 'recording.wav');
 
-            const res = await axios.post('http://localhost:8001/transcribe', fd);
+            const res = await axios.post('http://localhost:8000/transcribe', fd);
 
             const { transcription, final_emotion, audio_emotion, text_emotion } = res.data;
 
@@ -57,8 +57,10 @@ const AudioRecorder = ({ onPrediction }) => {
                     textEmotion: text_emotion
                 });
             }
-        } catch {
-            alert("Analysis failed.");
+        } catch (err) {
+            console.error("Upload/analysis error:", err);
+            const detail = err?.response?.data?.detail || err?.message || "Unknown error";
+            alert(`Analysis failed: ${detail}`);
         } finally {
             setIsLoading(false);
         }

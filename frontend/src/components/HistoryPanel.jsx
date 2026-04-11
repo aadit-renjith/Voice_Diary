@@ -1,29 +1,29 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import './HistoryPanel.css';
-import { Calendar, MessageSquare, ChevronDown, ChevronUp, Trash2, Clock } from 'lucide-react';
+import { Calendar, MessageSquare, ChevronDown, ChevronUp, Trash2, Clock, FileText, Sparkles, BookOpen } from 'lucide-react';
 
-const API = "http://localhost:8001";
+const API = "http://localhost:8000";
 
 const emojiMap = {
-    happy: '🤩',
-    sad: '😢',
-    angry: '😠',
-    fearful: '😰',
-    neutral: '😐',
-    surprised: '😲',
-    calm: '😌',
-    disgust: '🤢'
+    happy: '🤩', sad: '😢', angry: '😠', fearful: '😰',
+    neutral: '😐', surprised: '😲', calm: '😌', disgust: '🤢'
+};
+
+const emotionColor = {
+    happy: '#f59e0b', sad: '#60a5fa', angry: '#f87171',
+    fearful: '#a78bfa', neutral: '#94a3b8', surprised: '#34d399',
+    calm: '#67e8f9', disgust: '#fb923c'
 };
 
 const HistoryPanel = () => {
     const [history, setHistory] = useState([]);
     const [loading, setLoading] = useState(true);
-    const [expandedId, setExpandedId] = useState(null);
+    const [expandedTranscript, setExpandedTranscript] = useState({});
+    const [expandedSummary, setExpandedSummary] = useState({});
+    const [expandedChat, setExpandedChat] = useState({});
 
-    useEffect(() => {
-        fetchHistory();
-    }, []);
+    useEffect(() => { fetchHistory(); }, []);
 
     const fetchHistory = async () => {
         setLoading(true);
@@ -47,101 +47,135 @@ const HistoryPanel = () => {
         }
     };
 
-    const toggleExpand = (id) => {
-        setExpandedId(expandedId === id ? null : id);
-    };
+    const toggle = (setter, id) => setter(prev => ({ ...prev, [id]: !prev[id] }));
 
     const formatDate = (dateStr) => {
         const d = new Date(dateStr);
         return d.toLocaleString(undefined, {
-            weekday: 'short',
-            year: 'numeric',
-            month: 'short',
-            day: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit',
-            second: '2-digit'
+            weekday: 'short', year: 'numeric', month: 'short',
+            day: 'numeric', hour: '2-digit', minute: '2-digit'
         });
     };
 
-    if (loading) return <div className="history-status">Loading history...</div>;
+    if (loading) return (
+        <div className="hp-loading">
+            <div className="hp-spinner" />
+            <span>Loading your diary...</span>
+        </div>
+    );
 
     return (
-        <div className="history-panel">
-            <div className="history-header">
-                <h2>Your Progress</h2>
+        <div className="hp-page">
+            {/* Header */}
+            <div className="hp-header">
+                <div className="hp-header-left">
+                    <div className="hp-header-icon"><BookOpen size={22} /></div>
+                    <div>
+                        <h2 className="hp-title">My Diary</h2>
+                        <p className="hp-subtitle">{history.length} recorded moment{history.length !== 1 ? 's' : ''}</p>
+                    </div>
+                </div>
                 {history.length > 0 && (
-                    <button className="clear-btn" onClick={clearHistory}>
-                        <Trash2 size={16} /> Clear All
+                    <button className="hp-clear-btn" onClick={clearHistory}>
+                        <Trash2 size={15} /> Clear All
                     </button>
                 )}
             </div>
 
             {history.length === 0 ? (
-                <div className="history-empty">
-                    <Calendar size={48} className="empty-icon" />
-                    <p>No entries yet. Start recording or chatting to see your history!</p>
+                <div className="hp-empty">
+                    <div className="hp-empty-icon"><Calendar size={52} /></div>
+                    <p className="hp-empty-title">Nothing here yet</p>
+                    <p className="hp-empty-sub">Start recording to fill your diary with moments.</p>
                 </div>
             ) : (
-                <div className="history-list">
-                    {history.map((entry) => (
-                        <div key={entry.id} className={`history-item ${expandedId === entry.id ? 'expanded' : ''}`}>
-                            <div className="history-item-main" onClick={() => toggleExpand(entry.id)}>
-                                <div className="entry-icon">
-                                    {emojiMap[entry.emotion] || '💭'}
-                                </div>
-                                <div className="entry-info">
-                                    <div className="entry-date">
-                                        <Clock size={12} /> {formatDate(entry.date)}
+                <div className="hp-list">
+                    {history.map((entry) => {
+                        const color = emotionColor[entry.emotion] || '#94a3b8';
+                        const emoji = emojiMap[entry.emotion] || '💭';
+                        const chatData = entry.full_chat ? (() => { try { return JSON.parse(entry.full_chat); } catch { return null; } })() : null;
+
+                        return (
+                            <div key={entry.id} className="hp-card" style={{ '--accent': color }}>
+                                {/* Card top strip */}
+                                <div className="hp-card-strip" style={{ background: color }} />
+
+                                {/* Card header */}
+                                <div className="hp-card-head">
+                                    <div className="hp-emotion-badge" style={{ background: `${color}22`, border: `1px solid ${color}55` }}>
+                                        <span className="hp-emoji">{emoji}</span>
+                                        <span className="hp-emotion-label" style={{ color }}>{entry.emotion || 'Unknown'}</span>
                                     </div>
-                                    <div className="entry-emotion">{entry.emotion || 'Unknown'}</div>
+                                    <div className="hp-timestamp">
+                                        <Clock size={12} />
+                                        <span>{formatDate(entry.date)}</span>
+                                    </div>
                                 </div>
-                                <div className="entry-toggle">
-                                    {expandedId === entry.id ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
-                                </div>
-                            </div>
 
-                            {expandedId === entry.id && (
-                                <div className="history-details glass">
-                                    {entry.summary && (
-                                        <div className="detail-section">
-                                            <h4><MessageSquare size={14} /> Summary</h4>
-                                            <p>{entry.summary}</p>
-                                        </div>
-                                    )}
-
-                                    {entry.topics && entry.topics.length > 0 && (
-                                        <div className="detail-section">
-                                            <h4>Topics</h4>
-                                            <div className="topic-tags">
-                                                {entry.topics.map((t, idx) => <span key={idx} className="tag">{t}</span>)}
+                                {/* Expandable: Transcript */}
+                                {entry.transcription && (
+                                    <div className="hp-section">
+                                        <button className="hp-expand-btn" onClick={() => toggle(setExpandedTranscript, entry.id)}>
+                                            <FileText size={14} />
+                                            <span>Transcript</span>
+                                            {expandedTranscript[entry.id] ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                                        </button>
+                                        {expandedTranscript[entry.id] && (
+                                            <div className="hp-expand-body">
+                                                <p>{entry.transcription}</p>
                                             </div>
-                                        </div>
-                                    )}
+                                        )}
+                                    </div>
+                                )}
 
-                                    {entry.full_chat && (
-                                        <div className="detail-section">
-                                            <h4>Conversation History</h4>
-                                            <div className="chat-log">
-                                                {JSON.parse(entry.full_chat).map((msg, idx) => (
-                                                    <div key={idx} className={`log-msg ${msg.role}`}>
-                                                        <span className="msg-role">{msg.role === 'user' ? 'You' : 'AI'}:</span>
-                                                        <p>{msg.parts[0].text.replace(/^\[.*?\]\s*/, '')}</p>
+                                {/* Expandable: Summary (only if different from transcription) */}
+                                {entry.summary && entry.summary !== entry.transcription && (
+                                    <div className="hp-section">
+                                        <button className="hp-expand-btn" onClick={() => toggle(setExpandedSummary, entry.id)}>
+                                            <Sparkles size={14} />
+                                            <span>Summary</span>
+                                            {expandedSummary[entry.id] ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                                        </button>
+                                        {expandedSummary[entry.id] && (
+                                            <div className="hp-expand-body hp-summary-body">
+                                                <p>{entry.summary}</p>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+
+                                {/* Topics */}
+                                {entry.topics && entry.topics.length > 0 && (
+                                    <div className="hp-topics">
+                                        {entry.topics.map((t, i) => (
+                                            <span key={i} className="hp-topic-tag" style={{ color, borderColor: `${color}44` }}>{t}</span>
+                                        ))}
+                                    </div>
+                                )}
+
+                                {/* Expandable: Chat log */}
+                                {chatData && (
+                                    <div className="hp-section">
+                                        <button className="hp-expand-btn" onClick={() => toggle(setExpandedChat, entry.id)}>
+                                            <MessageSquare size={14} />
+                                            <span>Conversation</span>
+                                            {expandedChat[entry.id] ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                                        </button>
+                                        {expandedChat[entry.id] && (
+                                            <div className="hp-chat-log">
+                                                {chatData.map((msg, i) => (
+                                                    <div key={i} className={`hp-chat-msg hp-msg-${msg.role}`}>
+                                                        <span className="hp-msg-role">{msg.role === 'user' ? 'You' : 'AI'}</span>
+                                                        <p>{msg.parts?.[0]?.text?.replace(/^\[.*?\]\s*/, '') || ''}</p>
                                                     </div>
                                                 ))}
                                             </div>
-                                        </div>
-                                    )}
-
-                                    {!entry.summary && !entry.full_chat && (
-                                        <div className="detail-section">
-                                            <p className="no-detail">Voice analysis entry. Total transcript: "{entry.transcription}"</p>
-                                        </div>
-                                    )}
-                                </div>
-                            )}
-                        </div>
-                    ))}
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    })}
                 </div>
             )}
         </div>

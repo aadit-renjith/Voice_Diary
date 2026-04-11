@@ -107,6 +107,47 @@ body {
   background: #f3f4f6;
 }
 
+/* ===== Page Nav (Record / History toggle) ===== */
+.page-nav {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1.75rem;
+  background: rgba(255, 255, 255, 0.55);
+  backdrop-filter: blur(14px);
+  border: 1px solid rgba(255, 255, 255, 0.75);
+  border-radius: 2rem;
+  padding: 0.35rem;
+  width: fit-content;
+  box-shadow: 0 4px 20px rgba(99, 102, 241, 0.12);
+}
+
+.page-nav-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.55rem 1.4rem;
+  border-radius: 1.6rem;
+  border: none;
+  background: transparent;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #6b7280;
+  cursor: pointer;
+  transition: all 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.page-nav-btn:hover {
+  color: #4f46e5;
+  border-color: transparent;
+}
+
+.page-nav-btn.pnb-active {
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  color: white;
+  box-shadow: 0 4px 14px rgba(99, 102, 241, 0.38);
+  transform: scale(1.03);
+}
+
 /* ===== Body Grid — fills full width ===== */
 .body {
   display: grid;

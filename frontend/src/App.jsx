@@ -4,18 +4,20 @@ import EmotionChart from './components/EmotionChart';
 import ChatWidget from './components/ChatWidget';
 import ReportsPanel from './components/ReportsPanel';
 import HistoryPanel from './components/HistoryPanel';
-import TranscriptPanel from './components/TranscriptPanel';   // ← toggle: comment this out to hide
+import TranscriptPanel from './components/TranscriptPanel';
 import './App.css';
 import axios from 'axios';
+import { BookOpen, Mic } from 'lucide-react';
 
-const API = "http://localhost:8001";
+const API = "http://localhost:8000";
 
 function App() {
   const [currentEmotion, setCurrentEmotion] = useState(null);
   const [transcription, setTranscription] = useState("");
   const [history, setHistory] = useState([]);
   const [predictionCount, setPredictionCount] = useState(0);
-  const [lastPrediction, setLastPrediction] = useState(null); // full prediction data
+  const [lastPrediction, setLastPrediction] = useState(null);
+  const [page, setPage] = useState('home'); // 'home' | 'history'
 
   useEffect(() => {
     fetchInitialHistory();
@@ -36,7 +38,7 @@ function App() {
 
     setCurrentEmotion(emotionLabel);
     setTranscription(data?.transcription || "");
-    setLastPrediction(data);     // store full data for TranscriptPanel
+    setLastPrediction(data);
 
     if (emotionLabel) {
       setHistory(prev => [...prev, {
@@ -59,52 +61,74 @@ function App() {
 
   return (
     <div className="app">
-      <div className="body">
+      {/* ── Page Nav ─────────────────────────────────── */}
+      <div className="page-nav">
+        <button
+          id="nav-home-btn"
+          className={`page-nav-btn ${page === 'home' ? 'pnb-active' : ''}`}
+          onClick={() => setPage('home')}
+        >
+          <Mic size={16} />
+          <span>Record</span>
+        </button>
+        <button
+          id="nav-history-btn"
+          className={`page-nav-btn ${page === 'history' ? 'pnb-active' : ''}`}
+          onClick={() => setPage('history')}
+        >
+          <BookOpen size={16} />
+          <span>History</span>
+        </button>
+      </div>
 
-        <div className="col-left">
-          <h1>How are you feeling?</h1>
+      {/* ── Home Page ─────────────────────────────────── */}
+      {page === 'home' && (
+        <div className="body">
+          <div className="col-left">
+            <h1>How are you feeling?</h1>
 
-          <div className="card">
-            <AudioRecorder onPrediction={handlePrediction} />
-          </div>
+            <div className="card">
+              <AudioRecorder onPrediction={handlePrediction} />
+            </div>
 
-          <div className="card">
-            <p>Detected Emotion</p>
+            <div className="card">
+              <p>Detected Emotion</p>
+              {currentEmotion ? (
+                <>
+                  <div>
+                    {getLabel(currentEmotion)} {getEmoji(currentEmotion)}
+                  </div>
+                </>
+              ) : (
+                <p>Waiting...</p>
+              )}
+            </div>
 
-            {currentEmotion ? (
-              <>
-                <div>
-                  {getLabel(currentEmotion)} {getEmoji(currentEmotion)}
-                </div>
-              </>
-            ) : (
-              <p>Waiting...</p>
+            {lastPrediction && (
+              <div className="card">
+                <TranscriptPanel
+                  transcription={lastPrediction.transcription}
+                  audioEmotion={lastPrediction.audioEmotion}
+                  textEmotion={lastPrediction.textEmotion}
+                  finalEmotion={lastPrediction.finalEmotion}
+                />
+              </div>
             )}
           </div>
 
-          {/* ── Transcript Panel ────────────────────────────────────
-              To disable the transcription panel, comment out the
-              <TranscriptPanel ... /> block below (or remove the import above).
-          */}
-          {lastPrediction && (
-            <div className="card">
-              <TranscriptPanel
-                transcription={lastPrediction.transcription}
-                audioEmotion={lastPrediction.audioEmotion}
-                textEmotion={lastPrediction.textEmotion}
-                finalEmotion={lastPrediction.finalEmotion}
-              />
-            </div>
-          )}
-          {/* ── End Transcript Panel ─────────────────────────────── */}
-
+          <div className="col-right">
+            <EmotionChart data={history} />
+            <ReportsPanel refreshKey={predictionCount} />
+          </div>
         </div>
+      )}
 
-        <div className="col-right">
-          <EmotionChart data={history} />
-          <ReportsPanel refreshKey={predictionCount} />
+      {/* ── History Page ──────────────────────────────── */}
+      {page === 'history' && (
+        <div className="history-view">
+          <HistoryPanel />
         </div>
-      </div>
+      )}
 
       <ChatWidget
         currentEmotion={currentEmotion}
