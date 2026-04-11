@@ -1,11 +1,25 @@
 import os
 import json
+from pathlib import Path
 from google import genai
+from google.genai import types
 from dotenv import load_dotenv
 
-load_dotenv("apikey.env")
+ENV_PATH = Path(__file__).with_name("apikey.env")
+load_dotenv(ENV_PATH)
 
-client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+api_key = os.getenv("GEMINI_API_KEY")
+client = None
+
+if api_key:
+    client = genai.Client(
+        api_key=api_key,
+        http_options=types.HttpOptions(
+            # Ignore broken system proxy settings so Gemini can connect directly.
+            clientArgs={"trust_env": False},
+            asyncClientArgs={"trust_env": False},
+        ),
+    )
 
 SYSTEM_PROMPT = """You are a warm, empathetic diary companion embedded in a Voice Diary app.
 Your job is to help the user reflect on their day through a natural, caring conversation.
@@ -46,6 +60,24 @@ def _parse_response(raw_text: str) -> dict:
     return json.loads(raw)
 
 
+def _friendly_error_message(error: Exception) -> str:
+    message = str(error)
+
+    if "RESOURCE_EXHAUSTED" in message or "quota" in message.lower():
+        return (
+            "The diary chat is connected, but the Gemini API quota for this key is exhausted or not enabled. "
+            "Please check billing and quota for the project behind backend/apikey.env."
+        )
+
+    if "api key" in message.lower():
+        return "The Gemini API key is missing or invalid. Update backend/apikey.env and restart the backend."
+
+    if "actively refused it" in message.lower() or "connection refused" in message.lower():
+        return "The diary chat could not reach Gemini. A local proxy or network setting is blocking the request."
+
+    return "Sorry, I had a moment. Could you say that again?"
+
+
 class ChatEngine:
     """Manages a conversational session with Gemini AI."""
 
@@ -71,6 +103,14 @@ class ChatEngine:
         """
         history = self._get_or_create_session(session_id)
 
+        if client is None:
+            return {
+                "reply": "Chat is not configured yet. Add a valid Gemini API key in backend/apikey.env and restart the backend.",
+                "is_complete": False,
+                "summary": None,
+                "detected_topics": [],
+            }
+
         # Build the context-aware user message
         context_prefix = ""
         if emotion:
@@ -86,7 +126,7 @@ class ChatEngine:
 
         try:
             response = client.models.generate_content(
-                model="gemini-2.0-flash",
+                model="google/gemma-4-31b-it:free",
                 contents=contents,
                 config={
                     "system_instruction": SYSTEM_PROMPT,
@@ -122,7 +162,7 @@ class ChatEngine:
         except Exception as e:
             print(f"ChatEngine error: {e}")
             return {
-                "reply": "Sorry, I had a moment. Could you say that again?",
+                "reply": _friendly_error_message(e),
                 "is_complete": False,
                 "summary": None,
                 "detected_topics": [],
@@ -131,6 +171,16 @@ class ChatEngine:
     def get_opening_message(self, session_id: str) -> dict:
         """Generate the first AI message to start the conversation."""
         history = self._get_or_create_session(session_id)
+
+        if client is None:
+            opening = "Chat is not configured yet. Add a valid Gemini API key in backend/apikey.env and restart the backend."
+            history.append({"role": "model", "parts": [{"text": opening}]})
+            return {
+                "reply": opening,
+                "is_complete": False,
+                "summary": None,
+                "detected_topics": [],
+            }
 
         # Only generate opening if session is fresh
         if len(history) > 0:

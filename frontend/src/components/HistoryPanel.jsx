@@ -21,6 +21,7 @@ const HistoryPanel = () => {
     const [loading, setLoading] = useState(true);
     const [expandedTranscript, setExpandedTranscript] = useState({});
     const [expandedSummary, setExpandedSummary] = useState({});
+    const [expandedTopics, setExpandedTopics] = useState({});
     const [expandedChat, setExpandedChat] = useState({});
 
     useEffect(() => { fetchHistory(); }, []);
@@ -44,6 +45,16 @@ const HistoryPanel = () => {
             setHistory([]);
         } catch (err) {
             console.error("Failed to clear history:", err);
+        }
+    };
+
+    const deleteEntry = async (entryId) => {
+        if (!window.confirm("Delete this diary entry?")) return;
+        try {
+            await axios.delete(`${API}/history/${entryId}`);
+            setHistory(prev => prev.filter(entry => entry.id !== entryId));
+        } catch (err) {
+            console.error("Failed to delete entry:", err);
         }
     };
 
@@ -106,9 +117,18 @@ const HistoryPanel = () => {
                                         <span className="hp-emoji">{emoji}</span>
                                         <span className="hp-emotion-label" style={{ color }}>{entry.emotion || 'Unknown'}</span>
                                     </div>
-                                    <div className="hp-timestamp">
-                                        <Clock size={12} />
-                                        <span>{formatDate(entry.date)}</span>
+                                    <div className="hp-card-actions">
+                                        <div className="hp-timestamp">
+                                            <Clock size={12} />
+                                            <span>{formatDate(entry.date)}</span>
+                                        </div>
+                                        <button
+                                            className="hp-entry-delete-btn"
+                                            onClick={() => deleteEntry(entry.id)}
+                                            title="Delete entry"
+                                        >
+                                            <Trash2 size={13} />
+                                        </button>
                                     </div>
                                 </div>
 
@@ -144,12 +164,21 @@ const HistoryPanel = () => {
                                     </div>
                                 )}
 
-                                {/* Topics */}
+                                {/* Expandable: Topics */}
                                 {entry.topics && entry.topics.length > 0 && (
-                                    <div className="hp-topics">
-                                        {entry.topics.map((t, i) => (
-                                            <span key={i} className="hp-topic-tag" style={{ color, borderColor: `${color}44` }}>{t}</span>
-                                        ))}
+                                    <div className="hp-section">
+                                        <button className="hp-expand-btn" onClick={() => toggle(setExpandedTopics, entry.id)}>
+                                            <Sparkles size={14} />
+                                            <span>Topics</span>
+                                            {expandedTopics[entry.id] ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                                        </button>
+                                        {expandedTopics[entry.id] && (
+                                            <div className="hp-topics">
+                                                {entry.topics.map((t, i) => (
+                                                    <span key={i} className="hp-topic-tag" style={{ color, borderColor: `${color}44` }}>{t}</span>
+                                                ))}
+                                            </div>
+                                        )}
                                     </div>
                                 )}
 

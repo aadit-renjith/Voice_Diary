@@ -1,4 +1,4 @@
-from fastapi import FastAPI, File, UploadFile, HTTPException
+from fastapi import FastAPI, File, UploadFile, HTTPException, Form
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional
@@ -6,7 +6,6 @@ import uvicorn
 import shutil
 import os
 import traceback
-import uuid
 import numpy as np
 import pickle
 import sqlite3
@@ -20,8 +19,8 @@ from contextlib import asynccontextmanager
 # Local modules
 from data_processor import extract_multi_features
 from train_model import AttentionLayer, WarmupSchedule
-from chat_engine import ChatEngine
-from database import init_db, save_entry, get_entries, get_history
+from openrouter_chat_engine import ChatEngine
+from database import init_db, get_entries, get_history, upsert_daily_entry
 from text_emotion import get_text_emotion
 from fusion import fuse
 
@@ -156,7 +155,7 @@ def read_root():
 # ---------------------------------------------------------
 
 @app.post("/transcribe")
-async def transcribe_audio(file: UploadFile = File(...)):
+async def transcribe_audio(file: UploadFile = File(...), source: str = Form("standalone")):
 
     os.makedirs(TEMP_DIR, exist_ok=True)
     temp_path = os.path.join(TEMP_DIR, f"chat_{file.filename}")
@@ -168,11 +167,12 @@ async def transcribe_audio(file: UploadFile = File(...)):
     audio_emotion = None   # (label, confidence) or None
     text_emotion = None    # (label, confidence) or None
     final_emotion = None   # (label, confidence) or None
+    is_chat_source = source == "chat"
 
     try:
         # 1) Audio Emotion (CNN-BiLSTM model) ─────────────────────────
         try:
-            if model:
+            if model and not is_chat_source:
                 pred_emotion, probs = predict_from_file(temp_path)
                 if pred_emotion is not None and probs is not None:
                     audio_emotion = (pred_emotion, float(np.max(probs)))
@@ -193,7 +193,7 @@ async def transcribe_audio(file: UploadFile = File(...)):
 
         # 3) Text Emotion (DistilRoBERTa) ────────────────────────────
         try:
-            if transcription:
+            if transcription and not is_chat_source:
                 text_emotion = get_text_emotion(transcription)
                 print(f"[text]   {text_emotion}")
         except Exception as e:
@@ -201,21 +201,21 @@ async def transcribe_audio(file: UploadFile = File(...)):
             traceback.print_exc()
 
         # 4) Fusion ───────────────────────────────────────────────────
-        final_emotion = fuse(audio_emotion, text_emotion)
+        final_emotion = None if is_chat_source else fuse(audio_emotion, text_emotion)
         print(f"[fusion] {final_emotion}")
 
         # 5) Save standalone recording to DB ─────────────────────────
-        if final_emotion:
+        if source != "chat" and (transcription or final_emotion):
             try:
-                standalone_session = f"standalone-{uuid.uuid4().hex[:8]}"
-                save_entry(
-                    session_id=standalone_session,
-                    transcription=transcription or "",
-                    emotion=final_emotion[0],
-                    summary=transcription or "",
+                upsert_daily_entry(
+                    session_id=f"daily-{datetime.now().date().isoformat()}",
+                    transcription_append=transcription or "",
+                    emotion=final_emotion[0] if final_emotion else None,
+                    summary=None,
                     topics=[],
+                    full_chat=None,
                 )
-                print(f"[db]     saved standalone entry ({final_emotion[0]})")
+                print("[db]     updated daily diary entry from standalone recording")
             except Exception as e:
                 print(f"[db]     FAILED to save: {e}")
                 traceback.print_exc()
@@ -259,18 +259,16 @@ async def chat(req: ChatRequest):
         req.emotion  # send final_emotion from frontend ideally
     )
 
-    if result["is_complete"]:
-        history = chat_engine.sessions.get(req.session_id, [])
-        full_chat_json = json.dumps(history) if history else None
-
-        save_entry(
-            session_id=req.session_id,
-            transcription=req.message,
-            emotion=req.emotion,
-            summary=result["summary"],
-            topics=result["detected_topics"],
-            full_chat=full_chat_json
-        )
+    history = chat_engine.get_serializable_history(req.session_id)
+    full_chat_json = json.dumps(history) if history else None
+    upsert_daily_entry(
+        session_id=f"daily-{datetime.now().date().isoformat()}",
+        transcription_append=None,
+        emotion=req.emotion,
+        summary=result["summary"],
+        topics=result["detected_topics"],
+        full_chat=full_chat_json,
+    )
 
     return result
 
@@ -282,6 +280,21 @@ async def chat(req: ChatRequest):
 @app.get("/history")
 def fetch_history():
     return get_history()
+
+
+@app.delete("/history/{entry_id}")
+def delete_history_entry(entry_id: int):
+    conn = sqlite3.connect("voice_diary.db")
+    c = conn.cursor()
+    c.execute("DELETE FROM diary_entries WHERE id = ?", (entry_id,))
+    conn.commit()
+    deleted = c.rowcount
+    conn.close()
+
+    if deleted == 0:
+        raise HTTPException(status_code=404, detail="Entry not found")
+
+    return {"message": "History entry deleted", "id": entry_id}
 
 
 @app.delete("/history")

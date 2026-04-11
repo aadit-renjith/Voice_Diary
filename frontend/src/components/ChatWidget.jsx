@@ -1,10 +1,11 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Mic, Square, Loader2, RotateCcw, X, Sparkles, Keyboard } from 'lucide-react';
+import { Mic, Square, Loader2, RotateCcw, X, Sparkles, Keyboard, SendHorizonal } from 'lucide-react';
 import axios from 'axios';
 import RecordRTC from 'recordrtc';
 import './ChatWidget.css';
 
 const API = 'http://localhost:8000';
+const REQUEST_TIMEOUT_MS = 60000;
 
 // Generate a random short session ID
 const newSessionId = () => `chat-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
@@ -33,6 +34,9 @@ const ChatWidget = ({ currentEmotion, onChatComplete }) => {
     const [isRecording, setIsRecording] = useState(false);
     const [isProcessing, setIsProcessing] = useState(false);
     const recorderRef = useRef(null);
+    const recognitionRef = useRef(null);
+    const recordingModeRef = useRef(null);
+    const transcriptHandledRef = useRef(false);
 
     // Text fallback state
     const [showTextInput, setShowTextInput] = useState(false);
@@ -47,6 +51,13 @@ const ChatWidget = ({ currentEmotion, onChatComplete }) => {
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [messages, isProcessing]);
+
+    useEffect(() => {
+        return () => {
+            recognitionRef.current?.stop?.();
+            recorderRef.current?.stream?.getTracks?.().forEach(track => track.stop());
+        };
+    }, []);
 
     // ── Start a new diary session ─────────────────────────────────────
     const startSession = async () => {
@@ -68,6 +79,12 @@ const ChatWidget = ({ currentEmotion, onChatComplete }) => {
 
     // ── Reset to welcome screen ───────────────────────────────────────
     const resetSession = () => {
+        recognitionRef.current?.stop?.();
+        recorderRef.current?.stream?.getTracks?.().forEach(track => track.stop());
+        recognitionRef.current = null;
+        recorderRef.current = null;
+        recordingModeRef.current = null;
+        transcriptHandledRef.current = false;
         setSessionStarted(false);
         setMessages([]);
         setIsComplete(false);
@@ -86,6 +103,8 @@ const ChatWidget = ({ currentEmotion, onChatComplete }) => {
                 message: transcription,
                 emotion: emotionLabel || latestEmotion || null,
                 session_id: sessionId,
+            }, {
+                timeout: REQUEST_TIMEOUT_MS,
             });
 
             const { reply, is_complete, summary: chatSummary } = chatRes.data;
@@ -106,6 +125,60 @@ const ChatWidget = ({ currentEmotion, onChatComplete }) => {
 
     // ── Voice recording: start ────────────────────────────────────────
     const startRecording = async () => {
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+        if (SpeechRecognition) {
+            try {
+                const recognition = new SpeechRecognition();
+                recognition.lang = 'en-US';
+                recognition.continuous = false;
+                recognition.interimResults = false;
+                transcriptHandledRef.current = false;
+                recordingModeRef.current = 'speech-recognition';
+                recognitionRef.current = recognition;
+
+                recognition.onresult = async (event) => {
+                    const transcription = Array.from(event.results)
+                        .map(result => result?.[0]?.transcript || '')
+                        .join(' ')
+                        .trim();
+
+                    transcriptHandledRef.current = true;
+                    setIsRecording(false);
+
+                    if (!transcription) {
+                        setIsProcessing(false);
+                        setMessages(prev => [...prev, { role: 'system', content: "Couldn't catch that. Try again." }]);
+                        return;
+                    }
+
+                    await sendToChat(transcription, latestEmotion);
+                };
+
+                recognition.onerror = () => {
+                    setIsRecording(false);
+                    setIsProcessing(false);
+                    setMessages(prev => [...prev, {
+                        role: 'system',
+                        content: 'Voice transcription failed. Please try again or type instead.',
+                    }]);
+                };
+
+                recognition.onend = () => {
+                    if (!transcriptHandledRef.current) {
+                        setIsRecording(false);
+                        setIsProcessing(false);
+                    }
+                };
+
+                recognition.start();
+                setIsRecording(true);
+                return;
+            } catch (err) {
+                console.error('Speech recognition setup failed:', err);
+            }
+        }
+
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
             recorderRef.current = new RecordRTC(stream, {
@@ -115,6 +188,7 @@ const ChatWidget = ({ currentEmotion, onChatComplete }) => {
                 numberOfAudioChannels: 1,
                 desiredSampRate: 16000,
             });
+            recordingModeRef.current = 'recordrtc';
             recorderRef.current.startRecording();
             setIsRecording(true);
         } catch {
@@ -124,7 +198,16 @@ const ChatWidget = ({ currentEmotion, onChatComplete }) => {
 
     // ── Voice recording: stop, transcribe, send ───────────────────────
     const stopRecording = () => {
-        if (!recorderRef.current || !isRecording) return;
+        if (!isRecording) return;
+
+        if (recordingModeRef.current === 'speech-recognition' && recognitionRef.current) {
+            setIsRecording(false);
+            setIsProcessing(true);
+            recognitionRef.current.stop();
+            return;
+        }
+
+        if (!recorderRef.current) return;
 
         // Flip UI immediately so the stop button disappears right away
         setIsRecording(false);
@@ -137,7 +220,10 @@ const ChatWidget = ({ currentEmotion, onChatComplete }) => {
             try {
                 const fd = new FormData();
                 fd.append('file', blob, 'chat_recording.wav');
-                const transcribeRes = await axios.post(`${API}/transcribe`, fd);
+                fd.append('source', 'chat');
+                const transcribeRes = await axios.post(`${API}/transcribe`, fd, {
+                    timeout: REQUEST_TIMEOUT_MS,
+                });
                 const { transcription, final_emotion } = transcribeRes.data;
 
                 if (!transcription || transcription.trim() === '') {
@@ -152,7 +238,11 @@ const ChatWidget = ({ currentEmotion, onChatComplete }) => {
                 await sendToChat(transcription, emotionLabel);
             } catch (err) {
                 console.error('Transcription error:', err);
-                setMessages(prev => [...prev, { role: 'system', content: 'Audio processing failed.' }]);
+                const timedOut = err?.code === 'ECONNABORTED';
+                setMessages(prev => [...prev, {
+                    role: 'system',
+                    content: timedOut ? 'Audio processing timed out. Please try a shorter recording or type instead.' : 'Audio processing failed.',
+                }]);
                 setIsProcessing(false);
             }
         });

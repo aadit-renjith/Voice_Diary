@@ -44,6 +44,7 @@ const AudioRecorder = ({ onPrediction }) => {
         try {
             const fd = new FormData();
             fd.append('file', blob, 'recording.wav');
+            fd.append('source', 'standalone');
 
             const res = await axios.post('http://localhost:8000/transcribe', fd);
 

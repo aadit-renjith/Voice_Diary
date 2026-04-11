@@ -477,19 +477,22 @@
     justify-content: center;
     width: 36px;
     height: 36px;
+    padding: 0;
     border-radius: 50%;
-    border: 1px solid #e5e7eb;
-    background: white;
-    color: #9ca3af;
+    border: 1px solid #c7d2fe;
+    background: #eef2ff;
+    color: #4338ca;
     cursor: pointer;
     transition: all 0.2s ease;
     flex-shrink: 0;
+    line-height: 0;
+    box-shadow: 0 2px 8px rgba(99, 102, 241, 0.12);
 }
 
 .keyboard-toggle-btn:hover {
-    background: #f3f4f6;
-    color: #6b7280;
-    border-color: #c7d2fe;
+    background: #e0e7ff;
+    color: #312e81;
+    border-color: #a5b4fc;
 }
 
 /* ===== Recording Controls ===== */
@@ -639,15 +642,18 @@
     justify-content: center;
     width: 36px;
     height: 36px;
+    padding: 0;
     border-radius: 50%;
     border: none;
     cursor: pointer;
     transition: all 0.2s ease;
     flex-shrink: 0;
+    line-height: 0;
+    box-shadow: 0 4px 12px rgba(99, 102, 241, 0.24);
 }
 
 .mic-input-btn {
-    background: linear-gradient(135deg, #6366f1, #8b5cf6);
+    background: linear-gradient(135deg, #4338ca, #6d28d9);
     color: white;
 }
 
@@ -657,8 +663,10 @@
 }
 
 .send-btn {
-    background: linear-gradient(135deg, #6366f1, #8b5cf6);
+    background: linear-gradient(135deg, #4f46e5, #7c3aed);
     color: white;
+    font-size: 0;
+    position: relative;
 }
 
 .send-btn:hover:not(:disabled) {
@@ -669,6 +677,25 @@
 .send-btn:disabled {
     opacity: 0.4;
     cursor: not-allowed;
+}
+
+.send-btn::before {
+    content: "\2192";
+    font-size: 1rem;
+    font-weight: 900;
+    line-height: 1;
+    color: white;
+}
+
+.keyboard-toggle-btn svg,
+.mic-input-btn svg,
+.send-btn svg {
+    width: 16px;
+    height: 16px;
+    stroke: currentColor;
+    stroke-width: 2.4;
+    fill: none;
+    overflow: visible;
 }
 
 /* ===== Responsive ===== */
