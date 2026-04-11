@@ -5,15 +5,17 @@ from typing import Optional
 import uvicorn
 import shutil
 import os
+import traceback
+import uuid
 import numpy as np
 import pickle
 import sqlite3
 import json
 from collections import Counter
 from datetime import datetime, timedelta
+from contextlib import asynccontextmanager
 
-# ML / Audio
-import whisper
+# ML / Audio — Whisper is loaded lazily at startup
 
 # Local modules
 from data_processor import extract_multi_features
@@ -28,18 +30,6 @@ MODEL_PATH = "../models/ser_cnn_lstm.keras"
 LABEL_ENCODER_PATH = "../models/label_encoder.pkl"
 SCALER_PATH = "../models/scaler.pkl"
 TEMP_DIR = "temp_uploads"
-
-# Initialize App
-app = FastAPI(title="SER Voice Diary API", version="2.0")
-
-# CORS
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
 
 # Globals
 model = None
@@ -63,8 +53,8 @@ class StartChatRequest(BaseModel):
 # LOAD MODELS
 # ---------------------------------------------------------
 
-@app.on_event("startup")
-def load_model():
+@asynccontextmanager
+async def lifespan(app: FastAPI):
     global model, scaler, label_encoder, whisper_model
 
     init_db()
@@ -102,13 +92,29 @@ def load_model():
         except Exception as e:
             print(f"Error loading label encoder: {e}")
 
-    # Load Whisper
+    # Load Whisper (lazy import — only needed if installed)
     try:
-        whisper_model = whisper.load_model("base")
+        import whisper as _whisper
+        whisper_model = _whisper.load_model("base")
         print("Whisper model loaded successfully.")
     except Exception as e:
-        print(f"Error loading Whisper: {e}")
+        print(f"Whisper not available (text emotion will be skipped): {e}")
+        whisper_model = None
 
+    yield
+    # Cleanup code can go here if needed
+
+# Initialize App
+app = FastAPI(title="SER Voice Diary API", version="2.0", lifespan=lifespan)
+
+# CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # ---------------------------------------------------------
 # AUDIO EMOTION PREDICTION
@@ -152,48 +158,71 @@ def read_root():
 @app.post("/transcribe")
 async def transcribe_audio(file: UploadFile = File(...)):
 
-    if not os.path.exists(TEMP_DIR):
-        os.makedirs(TEMP_DIR)
-
+    os.makedirs(TEMP_DIR, exist_ok=True)
     temp_path = os.path.join(TEMP_DIR, f"chat_{file.filename}")
 
     with open(temp_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
 
     transcription = ""
-    audio_emotion = None
-    text_emotion = None
-    final_emotion = None
+    audio_emotion = None   # (label, confidence) or None
+    text_emotion = None    # (label, confidence) or None
+    final_emotion = None   # (label, confidence) or None
 
     try:
-        # 1) Whisper STT
-        if whisper_model:
-            result = whisper_model.transcribe(temp_path)
-            transcription = result.get("text", "").strip()
+        # 1) Audio Emotion (CNN-BiLSTM model) ─────────────────────────
+        try:
+            if model:
+                pred_emotion, probs = predict_from_file(temp_path)
+                if pred_emotion is not None and probs is not None:
+                    audio_emotion = (pred_emotion, float(np.max(probs)))
+                print(f"[audio]  {audio_emotion}")
+        except Exception as e:
+            print(f"[audio]  FAILED: {e}")
+            traceback.print_exc()
 
-        print(f"Transcription: {transcription}")
+        # 2) Whisper Speech-to-Text ───────────────────────────────────
+        try:
+            if whisper_model:
+                result = whisper_model.transcribe(temp_path)
+                transcription = result.get("text", "").strip()
+                print(f"[whisper] \"{transcription}\"")
+        except Exception as e:
+            print(f"[whisper] FAILED: {e}")
+            traceback.print_exc()
 
-        # 2) Audio Emotion
-        if model:
-            pred_emotion, probs = predict_from_file(temp_path)
-            if pred_emotion:
-                audio_emotion = (pred_emotion, float(np.max(probs)))
+        # 3) Text Emotion (DistilRoBERTa) ────────────────────────────
+        try:
+            if transcription:
+                text_emotion = get_text_emotion(transcription)
+                print(f"[text]   {text_emotion}")
+        except Exception as e:
+            print(f"[text]   FAILED: {e}")
+            traceback.print_exc()
 
-        print(f"Audio Emotion: {audio_emotion}")
-
-        # 3) Text Emotion
-        if transcription:
-            text_emotion = get_text_emotion(transcription)
-
-        print(f"Text Emotion: {text_emotion}")
-
-        # 4) Fusion
+        # 4) Fusion ───────────────────────────────────────────────────
         final_emotion = fuse(audio_emotion, text_emotion)
+        print(f"[fusion] {final_emotion}")
 
-        print(f"Final Emotion: {final_emotion}")
+        # 5) Save standalone recording to DB ─────────────────────────
+        if final_emotion:
+            try:
+                standalone_session = f"standalone-{uuid.uuid4().hex[:8]}"
+                save_entry(
+                    session_id=standalone_session,
+                    transcription=transcription or "",
+                    emotion=final_emotion[0],
+                    summary=transcription or "",
+                    topics=[],
+                )
+                print(f"[db]     saved standalone entry ({final_emotion[0]})")
+            except Exception as e:
+                print(f"[db]     FAILED to save: {e}")
+                traceback.print_exc()
 
     except Exception as e:
-        print(f"Error: {e}")
+        print(f"[transcribe] Unexpected error: {e}")
+        traceback.print_exc()
 
     finally:
         if os.path.exists(temp_path):
@@ -201,9 +230,9 @@ async def transcribe_audio(file: UploadFile = File(...)):
 
     return {
         "transcription": transcription,
-        "audio_emotion": audio_emotion,
-        "text_emotion": text_emotion,
-        "final_emotion": final_emotion
+        "audio_emotion": list(audio_emotion) if audio_emotion else None,
+        "text_emotion": list(text_emotion) if text_emotion else None,
+        "final_emotion": list(final_emotion) if final_emotion else None,
     }
 
 
@@ -332,4 +361,4 @@ def monthly_report():
 # ---------------------------------------------------------
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8001, reload=True)
+    uvicorn.run("app:app", host="0.0.0.0", port=8001, reload=True)

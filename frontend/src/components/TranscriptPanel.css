@@ -1,0 +1,125 @@
+/* TranscriptPanel.css */
+
+.transcript-panel {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 1rem;
+    overflow: hidden;
+    transition: all 0.3s ease;
+    font-family: 'Outfit', sans-serif;
+}
+
+.transcript-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.6rem 1rem;
+    cursor: pointer;
+    user-select: none;
+    background: rgba(255, 255, 255, 0.06);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    transition: background 0.2s;
+}
+
+.transcript-header:hover {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.transcript-title {
+    font-size: 0.82rem;
+    font-weight: 700;
+    color: rgba(255, 255, 255, 0.85);
+    letter-spacing: 0.02em;
+}
+
+.transcript-toggle {
+    font-size: 0.7rem;
+    color: rgba(255, 255, 255, 0.5);
+}
+
+.transcript-body {
+    padding: 0.75rem 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.65rem;
+    animation: panelFadeIn 0.2s ease;
+}
+
+@keyframes panelFadeIn {
+    from { opacity: 0; transform: translateY(-4px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+.transcript-section {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+}
+
+.transcript-label {
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: rgba(255, 255, 255, 0.45);
+}
+
+.transcript-quote {
+    margin: 0;
+    padding: 0.4rem 0.75rem;
+    border-left: 3px solid #6366f1;
+    font-size: 0.88rem;
+    color: rgba(255, 255, 255, 0.9);
+    font-style: italic;
+    line-height: 1.5;
+    background: rgba(99, 102, 241, 0.08);
+    border-radius: 0 0.5rem 0.5rem 0;
+}
+
+.transcript-emotions {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+}
+
+.emotion-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.3rem 0.5rem;
+    border-radius: 0.5rem;
+    font-size: 0.83rem;
+}
+
+.emotion-row.highlight {
+    background: rgba(99, 102, 241, 0.15);
+    border: 1px solid rgba(99, 102, 241, 0.3);
+}
+
+.emotion-row-label {
+    min-width: 70px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.5);
+}
+
+.emotion-row-value {
+    flex: 1;
+    color: rgba(255, 255, 255, 0.9);
+    font-weight: 600;
+    text-transform: capitalize;
+}
+
+.emotion-row-value.muted {
+    color: rgba(255, 255, 255, 0.3);
+    font-weight: 400;
+}
+
+.emotion-row-conf {
+    font-size: 0.75rem;
+    color: rgba(255, 255, 255, 0.4);
+}
+
+.transcript-panel.collapsed .transcript-body {
+    display: none;
+}
